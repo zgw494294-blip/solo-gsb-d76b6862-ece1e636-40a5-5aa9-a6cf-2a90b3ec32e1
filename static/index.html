@@ -10,7 +10,7 @@
 <header class="topbar">
   <div class="wrap">
     <h1>LED 混光配方台</h1>
-    <p class="subtitle">OR-Tools CP-SAT 精确求解 · 最小总功率 · 同功率下驱动级按 ID 字典序最小 · 无近似配方</p>
+    <p class="subtitle">OR-Tools CP-SAT 精确求解 · 最小总功率 · 同功率下驱动级按 ID 字典序最小 · 满档读数可由实测样本唯一标定 · 无近似配方</p>
   </div>
 </header>
 
@@ -65,9 +65,63 @@
     </div>
   </section>
 
+  <section class="panel" id="calib-panel">
+    <div class="panel-head">
+      <h2>③ LED 满档读数标定（3～12 组实测样本反求各路满档 RGB）</h2>
+      <div class="panel-actions">
+        <button type="button" id="add-sample" class="btn small">＋ 添加样本</button>
+        <button type="button" id="gen-samples" class="btn small ghost">按当前通道生成示例样本</button>
+      </div>
+    </div>
+    <p class="hint">
+      每组样本填写各路 <strong>0～255</strong> 整数驱动级，以及实测的 <strong>0～6000</strong>
+      整数线性 RGB。实测值按「各色实际值 = Σ(满档读数 × 驱动级) ÷ 255，再<strong>四舍五入到整数</strong>」解释，
+      后端用整数约束反求每路 0～1000 满档 RGB（三色不全为零）；样本矛盾、标定不唯一、搜索未完成都会明确报告，
+      <strong>只有证明唯一时才允许写回通道表（保留原功率）</strong>。
+    </p>
+    <div class="table-scroll">
+      <table class="grid calib-grid" id="sample-table">
+        <thead>
+          <tr id="sample-head-row"></tr>
+        </thead>
+        <tbody id="sample-tbody"></tbody>
+      </table>
+    </div>
+    <div class="solve-row">
+      <button type="button" id="calib-btn" class="btn primary">反求满档读数</button>
+      <span class="solver-meta">整数约束精确求解：先找一组合法参数，再证明是否存在第二组；搜索未完成不会给出结论。</span>
+    </div>
+
+    <div id="calib-result" hidden>
+      <div class="calib-status" id="calib-status"></div>
+      <div id="calib-unique-block" hidden>
+        <div class="table-scroll">
+          <table class="grid" id="calib-table">
+            <thead>
+              <tr><th>ID</th><th>反求满档 R</th><th>反求满档 G</th><th>反求满档 B</th>
+                  <th>满档色</th><th>当前功率 (mW，写回时保留)</th></tr>
+            </thead>
+            <tbody id="calib-tbody"></tbody>
+          </table>
+        </div>
+        <h3 class="subhead">逐样本实测校验（反求参数重算预测实测 vs 录入实测）</h3>
+        <div class="table-scroll">
+          <table class="grid" id="calib-residual-table">
+            <thead><tr><th>样本</th><th>反求参数预测实测</th><th>录入实测</th><th>残差</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="solve-row">
+          <button type="button" id="writeback-btn" class="btn primary">一键写回当前通道表（保留原功率）</button>
+          <span class="solver-meta" id="writeback-meta"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="panel" id="result-panel" hidden>
     <div class="panel-head">
-      <h2>③ 配方结果与对照</h2>
+      <h2>④ 配方结果与对照</h2>
       <div class="panel-actions">
         <button type="button" id="restore-opt" class="btn small ghost" hidden>恢复最优驱动级</button>
       </div>

@@ -156,6 +156,33 @@ input[type="number"]:focus, input[type="text"]:focus {
   border: 1px solid rgba(255,255,255,.25); vertical-align: middle;
 }
 
+/* 标定面板 */
+.calib-grid { min-width: 720px; }
+.calib-grid td input { width: 74px; }
+.calib-idx { color: var(--muted); font-family: var(--mono); white-space: nowrap; }
+
+.calib-status {
+  margin: 14px 0 12px;
+  border-radius: 9px;
+  padding: 10px 15px;
+  font-size: 14px;
+  border: 1px solid;
+  line-height: 1.6;
+}
+.calib-status.s-unique {
+  background: rgba(56,193,114,.12); border-color: rgba(56,193,114,.45); color: #a9ecc6;
+}
+.calib-status.s-contradictory {
+  background: rgba(239,77,77,.12); border-color: rgba(239,77,77,.45); color: #ffb1b1;
+}
+.calib-status.s-non_unique {
+  background: rgba(240,180,41,.13); border-color: rgba(240,180,41,.45); color: #ffe2a0;
+}
+.calib-status.s-unknown {
+  background: rgba(79,140,255,.1); border-color: rgba(79,140,255,.4); color: #b9d1ff;
+}
+#calib-residual-table { margin-top: 0; min-width: 480px; }
+
 .footer-note {
   color: var(--muted); font-size: 12px; padding-top: 4px; padding-bottom: 30px;
 }

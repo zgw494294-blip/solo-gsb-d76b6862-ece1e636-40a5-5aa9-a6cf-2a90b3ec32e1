@@ -8,7 +8,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .schemas import ChannelSolution, SolveRequest, SolveResponse
+from .schemas import (
+    CalibrateRequest,
+    CalibrateResponse,
+    CalibChannelResult,
+    ChannelSolution,
+    SolveRequest,
+    SolveResponse,
+)
+from .calibration import CalibSample, calibrate
 from .solver import Channel, solve, SolverError
 
 # static/ 与 app/ 同级；用绝对路径，保证从任意工作目录启动都能找到页面
@@ -80,6 +88,28 @@ def api_solve(req: SolveRequest) -> SolveResponse:
         total_power_mw=sol.power_mw,
         power_num=sol.power_num,
         message="求解成功：总功率已最小，相同功率下驱动级序列按 ID 字典序最小。",
+    )
+
+
+@app.post("/api/calibrate", response_model=CalibrateResponse)
+def api_calibrate(req: CalibrateRequest) -> CalibrateResponse:
+    """由 3～12 组实测样本反求各路 0～1000 满档 RGB（整数约束，唯一性可证明）。"""
+    ids = [c.id for c in req.channels]
+    samples = [
+        CalibSample(
+            drives=tuple(s.drives),
+            measured=(s.measured[0], s.measured[1], s.measured[2]),
+        )
+        for s in req.samples
+    ]
+    result = calibrate(ids, samples)
+    return CalibrateResponse(
+        status=result.status,
+        channels=[
+            CalibChannelResult(id=cid, r=r, g=g, b=b)
+            for (cid, r, g, b) in result.channels
+        ],
+        message=result.message,
     )
 
 
