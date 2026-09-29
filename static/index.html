@@ -46,7 +46,34 @@
   </section>
 
   <section class="panel">
-    <h2>② 目标线性 RGB 与容差</h2>
+    <div class="panel-head">
+      <h2>② 满档读数标定（从当前通道取 ID，3～12 组样本反求）</h2>
+      <div class="panel-actions">
+        <button type="button" id="add-sample" class="btn small">＋ 添加样本</button>
+        <button type="button" id="calib-sample" class="btn small ghost">生成示例样本</button>
+      </div>
+    </div>
+    <p class="hint">
+      每组样本：各路驱动级 0～255 整数、实测整数线性 RGB 0～6000。
+      实测按 <code>round(Σ(满档读数×驱动级)/255)</code>（四舍五入）解释；
+      标定只反求满档 RGB（0～1000、三色不全为零），<strong>不改动功率</strong>。
+      3 组起、最多 12 组；通道增删后样本驱动列会自动对齐。
+    </p>
+    <div class="table-scroll">
+      <table class="grid" id="sample-table">
+        <thead id="sample-thead"></thead>
+        <tbody id="sample-tbody"></tbody>
+      </table>
+    </div>
+    <div class="solve-row">
+      <button type="button" id="calib-btn" class="btn primary">开始标定（整数约束反求）</button>
+      <span class="solver-meta">CP-SAT 精确反求；样本矛盾、标定不唯一、搜索未完成都会分别明确报告，只有证明唯一才允许写回。</span>
+    </div>
+    <div id="calib-result" class="calib-result" hidden></div>
+  </section>
+
+  <section class="panel">
+    <h2>③ 目标线性 RGB 与容差</h2>
     <div class="target-row">
       <div class="target-inputs">
         <label>R <input type="number" id="target-r" min="0" max="1000" step="1" value="600"></label>
@@ -60,14 +87,14 @@
       </div>
     </div>
     <div class="solve-row">
-      <button type="button" id="solve-btn" class="btn primary">求解最省功率配方</button>
+      <button type="button" id="solve-btn" class="btn primary">④ 求解最省功率配方</button>
       <span class="solver-meta">整数规划精确求解；约束不可行时会明确提示“无可行配方”。</span>
     </div>
   </section>
 
   <section class="panel" id="result-panel" hidden>
     <div class="panel-head">
-      <h2>③ 配方结果与对照</h2>
+      <h2>⑤ 配方结果与对照</h2>
       <div class="panel-actions">
         <button type="button" id="restore-opt" class="btn small ghost" hidden>恢复最优驱动级</button>
       </div>

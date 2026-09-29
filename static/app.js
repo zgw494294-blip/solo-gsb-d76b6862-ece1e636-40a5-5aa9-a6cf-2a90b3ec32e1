@@ -143,6 +143,237 @@ function validateForm({ target, tolerance }) {
   return [...new Set(errs)];
 }
 
+/* ---------------- 满档读数标定 ---------------- */
+
+// 样本行：drives 为与 channels 同序的字符串数组（保留原始输入便于校验），
+// measured 为实测 R/G/B 字符串
+let calibSamples = [];
+let calibResult = null;
+
+function syncSamplesFromDom() {
+  calibSamples = $$('#sample-tbody tr').map((tr) => ({
+    drives: Array.from(tr.querySelectorAll('.f-sd')).map((el) => el.value.trim()),
+    measured: ['r', 'g', 'b'].map((k) => tr.querySelector(`.f-sm-${k}`).value.trim()),
+  }));
+}
+
+function renderSamples() {
+  // 注意：不要在这里从 DOM 反向同步——首帧 DOM 为空会清空数据；
+  // DOM -> 状态的同步由 syncSamplesFromDom() 在用户操作时显式进行。
+  const n = channels.length;
+  // 驱动列随当前通道对齐：新增通道补 0，删除通道截掉对应列
+  calibSamples.forEach((row) => {
+    if (row.drives.length < n) row.drives.push(...Array(n - row.drives.length).fill('0'));
+    else if (row.drives.length > n) row.drives = row.drives.slice(0, n);
+  });
+
+  const head = $('#sample-thead');
+  head.innerHTML = `<tr>
+      <th class="idx-cell">#</th>
+      ${channels.map((c) => `<th>驱动<span class="hkind hid">${esc(c.id || '？')}</span></th>`).join('')}
+      <th>实测 R<span class="hkind">0～6000</span></th>
+      <th>实测 G<span class="hkind">0～6000</span></th>
+      <th>实测 B<span class="hkind">0～6000</span></th>
+      <th></th>
+    </tr>`;
+
+  $('#sample-tbody').innerHTML = calibSamples.map((row, j) => `
+    <tr data-j="${j}">
+      <td class="idx-cell">${j + 1}</td>
+      ${row.drives.map((v) => `<td><input type="number" class="f-sd" min="0" max="255" step="1" value="${esc(v)}"></td>`).join('')}
+      <td><input type="number" class="f-sm-r" min="0" max="6000" step="1" value="${esc(row.measured[0] ?? '')}"></td>
+      <td><input type="number" class="f-sm-g" min="0" max="6000" step="1" value="${esc(row.measured[1] ?? '')}"></td>
+      <td><input type="number" class="f-sm-b" min="0" max="6000" step="1" value="${esc(row.measured[2] ?? '')}"></td>
+      <td><button type="button" class="btn small danger sample-del" ${calibSamples.length <= 3 ? 'disabled' : ''}>删除</button></td>
+    </tr>`).join('');
+  $('#add-sample').disabled = calibSamples.length >= 12;
+}
+
+// 按当前通道表中的满档 RGB 合成示例样本（对角满档 + 混合驱动）
+function generateCalibSamples() {
+  const n = channels.length;
+  const roundHalfUp = (x) => Math.floor(x + 0.5);
+  const measure = (d) => [0, 1, 2].map((c) =>
+    roundHalfUp(channels.reduce((s, ch, i) => s + ch[['r', 'g', 'b'][c]] * d[i], 0) / 255));
+  const rows = [];
+  // n 组对角满档样本：单独把每路开到 255
+  for (let i = 0; i < n; i++) {
+    const d = Array(n).fill(0);
+    d[i] = 255;
+    rows.push({ drives: d.map(String), measured: measure(d).map(String) });
+  }
+  // 补到最多 8 组混合样本
+  const mixPresets = [
+    [128, 200, 64, 30, 90, 150],
+    [100, 100, 100, 100, 100, 100],
+    [0, 255, 255, 0, 128, 64],
+    [200, 40, 220, 160, 10, 90],
+  ];
+  for (const preset of mixPresets) {
+    if (rows.length >= Math.min(8, 12)) break;
+    const d = preset.slice(0, n);
+    rows.push({ drives: d.map(String), measured: measure(d).map(String) });
+  }
+  calibSamples = rows;
+  renderSamples();
+  invalidateCalib();
+}
+
+function invalidateCalib() {
+  calibResult = null;
+  $('#calib-result').hidden = true;
+}
+
+// 初始 4 组样本：与内置 4 路示例通道一一对应（对角满档，量纲自洽）
+function seedCalibSamples() {
+  const n = channels.length;
+  const roundHalfUp = (x) => Math.floor(x + 0.5);
+  const measure = (d) => [0, 1, 2].map((c) =>
+    roundHalfUp(channels.reduce((s, ch, i) => s + ch[['r', 'g', 'b'][c]] * (d[i] || 0), 0) / 255));
+  const presets = [[255, 0, 0, 0], [0, 255, 0, 0], [0, 0, 255, 0], [0, 0, 0, 255]];
+  calibSamples = presets.map((p) => {
+    const d = p.slice(0, n);
+    return { drives: d.map(String), measured: measure(d).map(String) };
+  });
+}
+
+function validateCalibForm() {
+  const errs = [];
+  const ids = channels.map((c) => (c.id || '').trim());
+  if (ids.some((x) => !x)) errs.push('每路通道都必须填写 ID 后才能标定。');
+  else if (new Set(ids).size !== ids.length) {
+    const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
+    errs.push(`通道 ID 必须唯一，重复：${[...new Set(dup)].join('、')}。`);
+  }
+  if (!Array.isArray(calibSamples) || calibSamples.length < 3) {
+    errs.push('标定至少需要 3 组样本。');
+    return errs;
+  }
+  calibSamples.forEach((row, j) => {
+    const tag = `第 ${j + 1} 组样本`;
+    if (row.drives.length !== channels.length) {
+      errs.push(`${tag} 的驱动级数量与通道数不一致。`);
+      return;
+    }
+    row.drives.forEach((v, i) => {
+      if (!/^\d+$/.test(v)) errs.push(`${tag}：通道“${ids[i] || i + 1}”的驱动级必须是 0～255 的整数。`);
+      else if (+v > 255) errs.push(`${tag}：通道“${ids[i]}”的驱动级超出 0～255。`);
+    });
+    (['R', 'G', 'B']).forEach((cn, k) => {
+      const v = row.measured[k];
+      if (!/^\d+$/.test(v)) errs.push(`${tag}：实测 ${cn} 必须是 0～6000 的整数。`);
+      else if (+v > 6000) errs.push(`${tag}：实测 ${cn} 超出 0～6000。`);
+    });
+  });
+  return [...new Set(errs)];
+}
+
+async function onCalibrate() {
+  clearBanner();
+  $$('#channel-tbody tr').forEach((tr) => syncRowState(tr));
+  syncSamplesFromDom();
+  const errs = validateCalibForm();
+  if (errs.length) {
+    showBanner('error', '<strong>样本录入有误：</strong><br>' + errs.map(esc).join('<br>'));
+    return;
+  }
+  const btn = $('#calib-btn');
+  btn.disabled = true;
+  btn.textContent = '标定中…';
+  try {
+    const resp = await fetch('/api/calibrate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channels: channels.map(({ id }) => ({ id })),
+        samples: calibSamples.map((row) => ({
+          drives: row.drives.map(Number),
+          measured: row.measured.map(Number),
+        })),
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      const detail = data.detail;
+      let msg;
+      if (Array.isArray(detail)) {
+        msg = detail.map((d) => {
+          const loc = (d.loc || []).filter((x) => x !== 'body').join('.');
+          return `${loc ? loc + '：' : ''}${d.msg}`;
+        }).join('<br>');
+      } else {
+        msg = esc(String(detail ?? '标定失败'));
+      }
+      showBanner('error', '<strong>请求被拒绝：</strong><br>' + msg);
+      invalidateCalib();
+      return;
+    }
+    calibResult = data;
+    renderCalibResult();
+  } catch (e) {
+    showBanner('error', `请求失败：${esc(e.message)}。请确认后端服务已启动。`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '开始标定（整数约束反求）';
+  }
+}
+
+const CALIB_STATUS_TEXT = {
+  unique: '✔ 标定唯一',
+  infeasible: '⛔ 样本矛盾',
+  non_unique: '⚠ 标定不唯一',
+  unknown: '⏳ 搜索未完成',
+};
+
+function renderCalibResult() {
+  const box = $('#calib-result');
+  box.hidden = false;
+  const st = calibResult.status;
+  let html = `<div class="calib-status ${esc(st)}"><strong>${CALIB_STATUS_TEXT[st] || esc(st)}</strong>：${esc(calibResult.message)}</div>`;
+  if (st === 'unique') {
+    html += `<div class="table-scroll"><table class="grid" id="calib-out-table"><thead><tr>
+        <th>ID</th><th>标定 R</th><th>标定 G</th><th>标定 B</th><th>满档色</th></tr></thead><tbody>
+      ${calibResult.channels.map((c) => `<tr data-id="${esc(c.id)}">
+        <td><strong>${esc(c.id)}</strong></td>
+        <td class="co-r">${c.r}</td><td class="co-g">${c.g}</td><td class="co-b">${c.b}</td>
+        <td class="co-swatch"></td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="writeback-row">
+        <button type="button" id="writeback-btn" class="btn primary">一键写回当前通道表（保留原功率）</button>
+        <span class="writeback-note">写回后即可在 ③④ 中直接用于配方求解。</span>
+      </div>`;
+  }
+  box.innerHTML = html;
+  if (st === 'unique') {
+    $$('#calib-out-table tbody tr').forEach((tr) => {
+      const c = calibResult.channels.find((x) => x.id === tr.dataset.id);
+      tr.querySelector('.co-swatch').innerHTML =
+        swatchHtml([c.r, c.g, c.b], `标定满档 RGB(${c.r}, ${c.g}, ${c.b})`);
+    });
+    $('#writeback-btn').addEventListener('click', writebackCalibration);
+  }
+}
+
+function writebackCalibration() {
+  if (!calibResult || calibResult.status !== 'unique') return;
+  const byId = new Map(calibResult.channels.map((c) => [c.id, c]));
+  let applied = 0;
+  channels.forEach((ch) => {
+    const hit = byId.get(ch.id);
+    if (hit) {
+      ch.r = hit.r; ch.g = hit.g; ch.b = hit.b; // power_mw 原样保留
+      applied += 1;
+    }
+  });
+  renderChannels();
+  // 旧配方基于旧读数，写回后作废
+  solution = null;
+  optimalDrives = null;
+  $('#result-panel').hidden = true;
+  showBanner('info',
+    `<strong>已写回 ${applied} 路满档 RGB</strong>（各通道功率保持不变），可直接设置目标并求解配方。`);
+}
+
 /* ---------------- 目标色块（实时） ---------------- */
 
 function refreshTargetSwatch() {
@@ -202,7 +433,7 @@ async function onSolve() {
     showBanner('error', `请求失败：${esc(e.message)}。请确认后端服务已启动。`);
   } finally {
     btn.disabled = false;
-    btn.textContent = '求解最省功率配方';
+    btn.textContent = '④ 求解最省功率配方';
   }
 }
 
@@ -350,6 +581,9 @@ function bindEvents() {
     while (used.has(id)) { n += 1; id = `LED${n}`; }
     channels.push({ id, r: 500, g: 500, b: 500, power_mw: 3000 });
     renderChannels();
+    syncSamplesFromDom();
+    renderSamples();
+    invalidateCalib();
   });
 
   $('#reset-sample').addEventListener('click', () => {
@@ -359,20 +593,57 @@ function bindEvents() {
     $('#target-b').value = SAMPLE.target.b;
     $('#tolerance').value = SAMPLE.tolerance;
     renderChannels();
+    calibSamples = [];
+    seedCalibSamples();
+    renderSamples();
+    invalidateCalib();
     refreshTargetSwatch();
     clearBanner();
   });
 
   $('#channel-tbody').addEventListener('input', (e) => {
     const tr = e.target.closest('tr');
-    if (tr) syncRowState(tr);
+    if (!tr) return;
+    syncRowState(tr);
+    invalidateCalib();
+    // ID 改名时刷新样本表表头的通道名（保留样本已填内容）
+    if (e.target.classList.contains('f-id')) {
+      syncSamplesFromDom();
+      renderSamples();
+    }
   });
   $('#channel-tbody').addEventListener('click', (e) => {
     if (!e.target.classList.contains('del-btn')) return;
     const tr = e.target.closest('tr');
     channels.splice(+tr.dataset.i, 1);
     renderChannels();
+    syncSamplesFromDom();
+    renderSamples();
+    invalidateCalib();
   });
+
+  // 标定样本表
+  $('#add-sample').addEventListener('click', () => {
+    if (calibSamples.length >= 12) return;
+    syncSamplesFromDom();
+    calibSamples.push({ drives: Array(channels.length).fill('0'), measured: ['', '', ''] });
+    renderSamples();
+    invalidateCalib();
+  });
+  $('#calib-sample').addEventListener('click', () => {
+    $$('#channel-tbody tr').forEach((tr) => syncRowState(tr));
+    generateCalibSamples();
+  });
+  $('#sample-tbody').addEventListener('click', (e) => {
+    if (!e.target.classList.contains('sample-del')) return;
+    const tr = e.target.closest('tr');
+    syncSamplesFromDom();
+    calibSamples.splice(+tr.dataset.j, 1);
+    renderSamples();
+    invalidateCalib();
+  });
+  $('#sample-tbody').addEventListener('input', () => invalidateCalib());
+  $('#calib-btn').addEventListener('click', onCalibrate);
 
   ['#target-r', '#target-g', '#target-b', '#tolerance'].forEach((sel) =>
     $(sel).addEventListener('input', refreshTargetSwatch));
@@ -391,5 +662,7 @@ function bindEvents() {
 /* ---------------- 启动 ---------------- */
 
 renderChannels();
+seedCalibSamples();
+renderSamples();
 refreshTargetSwatch();
 bindEvents();

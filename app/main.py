@@ -8,7 +8,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .schemas import ChannelSolution, SolveRequest, SolveResponse
+from .schemas import (
+    CalibrateRequest,
+    CalibrateResponse,
+    CalibReading,
+    ChannelSolution,
+    SolveRequest,
+    SolveResponse,
+)
+from .calibrator import CalibSample, CalibrationError, calibrate
 from .solver import Channel, solve, SolverError
 
 # static/ 与 app/ 同级；用绝对路径，保证从任意工作目录启动都能找到页面
@@ -25,6 +33,28 @@ app = FastAPI(
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/api/calibrate", response_model=CalibrateResponse)
+def api_calibrate(req: CalibrateRequest) -> CalibrateResponse:
+    ids = [c.id for c in req.channels]
+    samples = [
+        CalibSample(drives=tuple(s.drives), measured=(s.measured[0], s.measured[1], s.measured[2]))
+        for s in req.samples
+    ]
+    try:
+        result = calibrate(ids, samples)
+    except CalibrationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return CalibrateResponse(
+        status=result.status,
+        channels=[
+            CalibReading(id=result.ids[i], r=r, g=g, b=b)
+            for i, (r, g, b) in enumerate(result.readings)
+        ],
+        message=result.message,
+    )
 
 
 @app.post("/api/solve", response_model=SolveResponse)

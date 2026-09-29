@@ -124,6 +124,23 @@ input[type="number"]:focus, input[type="text"]:focus {
 
 #drive-table input { width: 92px; }
 
+#sample-table input { width: 62px; }
+#sample-table .idx-cell { color: var(--muted); width: 44px; }
+#sample-table th .hid { color: var(--text); font-family: var(--mono); }
+#sample-table th .hkind { display: block; font-weight: 500; color: var(--muted); font-size: 11px; }
+
+.calib-result { margin-top: 16px; border-top: 1px dashed var(--border); padding-top: 14px; }
+.calib-status {
+  border-radius: 8px; padding: 10px 14px; font-size: 13.5px;
+  border: 1px solid; margin-bottom: 12px;
+}
+.calib-status.unique { background: rgba(56,193,114,.1); border-color: rgba(56,193,114,.45); color: #8ee6b6; }
+.calib-status.infeasible { background: rgba(239,77,77,.1); border-color: rgba(239,77,77,.45); color: #ffb1b1; }
+.calib-status.non_unique { background: rgba(240,180,41,.1); border-color: rgba(240,180,41,.45); color: #ffd98a; }
+.calib-status.unknown { background: rgba(151,160,180,.1); border-color: rgba(151,160,180,.4); color: var(--muted); }
+.writeback-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.writeback-note { color: var(--muted); font-size: 12.5px; }
+
 .cname { font-weight: 700; }
 .cname.r { color: #ff6b6b; }
 .cname.g { color: #5be08f; }
